@@ -272,6 +272,7 @@ class GenerateSchema:
         '_has_invalid_schema',
         'field_name_stack',
         'defs',
+        '_current_field_info',
     )
 
     def __init__(
@@ -288,6 +289,7 @@ class GenerateSchema:
         self._has_invalid_schema = False
         self.field_name_stack = _FieldNameStack()
         self.defs = _Definitions()
+        self._current_field_info: FieldInfo | None = None
 
     @classmethod
     def __from_parent(
@@ -305,7 +307,17 @@ class GenerateSchema:
         obj._has_invalid_schema = False
         obj.field_name_stack = _FieldNameStack()
         obj.defs = defs
+        obj._current_field_info = None
         return obj
+
+    @contextmanager
+    def set_current_field_info(self, field_info: FieldInfo):
+        assert self._current_field_info is None
+        self._current_field_info = field_info
+        try:
+            yield
+        finally:
+            self._current_field_info = None
 
     @property
     def _config_wrapper(self) -> ConfigWrapper:
@@ -945,13 +957,14 @@ class GenerateSchema:
             return schema
 
         with self.field_name_stack.push(name):
-            if field_info.discriminator is not None:
-                schema = self._apply_annotations(source_type, annotations, transform_inner_schema=set_discriminator)
-            else:
-                schema = self._apply_annotations(
-                    source_type,
-                    annotations,
-                )
+            with self.set_current_field_info(field_info):
+                if field_info.discriminator is not None:
+                    schema = self._apply_annotations(source_type, annotations, transform_inner_schema=set_discriminator)
+                else:
+                    schema = self._apply_annotations(
+                        source_type,
+                        annotations,
+                    )
 
         # This V1 compatibility shim should eventually be removed
         # push down any `each_item=True` validators
@@ -1612,6 +1625,14 @@ class GenerateSchema:
         not expect `source_type` to be an `Annotated` object, it expects it to be  the first argument of that
         (in other words, `GenerateSchema._annotated_schema` just unpacks `Annotated`, this process it).
         """
+        if self._current_field_info:
+            from ..fields import FieldInfo
+
+            for annotation in annotations:
+                if isinstance(annotation, FieldInfo):
+                    for attr in ['alias', 'validation_alias', 'serialization_alias']:
+                        assert getattr(annotation, attr) in (None, getattr(self._current_field_info, attr))
+
         annotations = list(_known_annotated_metadata.expand_grouped_metadata(annotations))
         res = self._get_prepare_pydantic_annotations_for_known_type(source_type, tuple(annotations))
         if res is not None:
