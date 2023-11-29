@@ -49,6 +49,10 @@ class _ModelNamespaceDict(dict):
     """
 
     def __setitem__(self, k: str, v: object) -> None:
+        from ..fields import FieldInfo
+
+        if isinstance(v, FieldInfo):
+            k = '__hidden_field__' + k
         existing: Any = self.get(k, None)
         if existing and v is not existing and isinstance(existing, PydanticDescriptorProxy):
             warnings.warn(f'`{k}` overrides an existing Pydantic `{existing.decorator_info.decorator_repr}` decorator')
@@ -86,6 +90,7 @@ class ModelMetaclass(ABCMeta):
         # that `BaseModel` itself won't have any bases, but any subclass of it will, to determine whether the `__new__`
         # call we're in the middle of is for the `BaseModel` class.
         if bases:
+            namespace = {k.replace('__hidden_field__', ''): v for k, v in namespace.items()}
             base_field_names, class_vars, base_private_attributes = mcs._collect_bases_data(bases)
 
             config_wrapper = ConfigWrapper.for_model(bases, namespace, kwargs)

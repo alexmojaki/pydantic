@@ -206,10 +206,9 @@ def get_cls_type_hints_lenient(obj: Any, globalns: dict[str, Any] | None = None)
     hints = {}
     for base in reversed(obj.__mro__):
         ann = base.__dict__.get('__annotations__')
-        localns = dict(vars(base))
         if ann is not None and ann is not GetSetDescriptorType:
             for name, value in ann.items():
-                hints[name] = eval_type_lenient(value, globalns, localns)
+                hints[name] = eval_type_lenient(value, globalns, None)
     return hints
 
 
